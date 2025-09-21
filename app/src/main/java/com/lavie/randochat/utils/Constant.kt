@@ -59,6 +59,10 @@ object Constants {
     const val CACHED_USER_ID = "cached_user_id"
     const val CACHED_USER_EMAIL = "cached_user_email"
     const val CACHED_USER_NICKNAME = "cached_user_nickname"
+    const val CACHED_USER_IS_DISABLED = "cached_user_is_disabled"
+    const val CACHED_USER_CITIZEN_SCORE = "cached_user_citizen_score"
+    const val CACHED_USER_IMAGE_CREDIT = "cached_user_image_credit"
+    const val CACHED_USER_FCM_TOKENS = "cached_user_fcm_tokens"
     const val CACHED_ROOM_ID = "cached_active_room"
     const val SENDER_ID = "senderId"
     const val CONTENT_RES_ID = "contentResId"
@@ -107,4 +111,10 @@ object Constants {
     const val PREF_NOTIFICATIONS_ENABLED = "pref_notifications_enabled"
     const val CITIZEN_SCORE = "citizenScore"
     const val IMAGE_CREDIT = "imageCredit"
+    const val LOCATION = "location"
+    const val LAT = "lat"
+    const val LNG = "lng"
+    const val MAX_MATCH_DISTANCE_KM = 100.0
+    const val PERM_FINE = android.Manifest.permission.ACCESS_FINE_LOCATION
+    const val PERM_COARSE = android.Manifest.permission.ACCESS_COARSE_LOCATION
 }

@@ -127,5 +127,8 @@
     <string name="image_credit">Rando Coin (used to send images): %1$s</string>
     <string name="not_enough_rando_coin">You don\'t have enough Rando Coins to send an image</string>
     <string name="cannot_send_image">Cannot send image, please try again in a few seconds</string>
-
+    <string name="location_unavailable">Failed to get location</string>
+    <string name="location_permission_rationale">Cần quyền vị trí để ghép đôi theo khu vực.</string>
+    <string name="location_disabled">Vị trí đang tắt. Hãy bật GPS.</string>
+    <string name="cannot_get_location">Không lấy được vị trí. Thử lại.</string>
 </resources>

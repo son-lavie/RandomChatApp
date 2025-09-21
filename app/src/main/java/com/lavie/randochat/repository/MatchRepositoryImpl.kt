@@ -4,6 +4,7 @@ import com.google.firebase.database.*
 import com.lavie.randochat.R
 import com.lavie.randochat.model.ChatRoom
 import com.lavie.randochat.utils.ChatType
+import com.lavie.randochat.utils.CommonUtils.haversineKm
 import com.lavie.randochat.utils.Constants
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -16,10 +17,27 @@ class MatchRepositoryImpl(
     override suspend fun findUserForMatch(
         userId: String,
         chatType: ChatType
-    ): MatchRepository.MatchResult =
-        suspendCancellableCoroutine { cont ->
+    ): MatchRepository.MatchResult {
+
+        var myLat: Double? = null
+        var myLng: Double? = null
+        if (chatType == ChatType.LOCATION) {
+            val userLocSnap = database
+                .child(Constants.USERS).child(userId).child(Constants.LOCATION)
+                .get().await()
+
+            myLat = userLocSnap.child(Constants.LAT).getValue(Double::class.java)
+            myLng = userLocSnap.child(Constants.LNG).getValue(Double::class.java)
+
+            if (myLat == null || myLng == null) {
+                return MatchRepository.MatchResult.Error(R.string.location_unavailable) // tạo stringId
+            }
+        }
+
+        return suspendCancellableCoroutine { cont ->
             val waitingRef = database.child(Constants.WAITING_USERS)
             val chatRoomsRef = database.child(Constants.CHAT_ROOMS)
+            val matchNotiRef = database.child(Constants.MATCH_NOTIFICATIONS)
 
             var matchedUserId: String? = null
 
@@ -28,18 +46,45 @@ class MatchRepositoryImpl(
                     val waitingList = mutableData.children.toList()
 
                     val availableUsers = when (chatType) {
-                        ChatType.RANDOM -> {
-                            waitingList.filter {
-                                it.key != userId &&
-                                        it.child(Constants.STATUS).value == Constants.STATUS_WAITING &&
-                                        it.child(Constants.MATCHING).value != true &&
-                                        (it.child(Constants.CHAT_TYPE).value?.toString() == ChatType.RANDOM.name)
-                            }
+                        ChatType.RANDOM -> waitingList.filter {
+                            it.key != userId &&
+                                    it.child(Constants.STATUS).value == Constants.STATUS_WAITING &&
+                                    it.child(Constants.MATCHING).value != true &&
+                                    it.child(Constants.CHAT_TYPE).value?.toString() == ChatType.RANDOM.name
                         }
 
-                        ChatType.AGE -> TODO()
+                        ChatType.AGE -> emptyList() // TODO: implement later
 
-                        ChatType.LOCATION -> TODO()
+                        ChatType.LOCATION -> {
+                            val currentUserNode = mutableData.child(userId)
+                            if (currentUserNode.value == null ||
+                                currentUserNode.child(Constants.STATUS).value != Constants.STATUS_WAITING
+                            ) {
+                                currentUserNode.child(Constants.STATUS).value = Constants.STATUS_WAITING
+                                currentUserNode.child(Constants.TIMESTAMP).value = System.currentTimeMillis()
+                                currentUserNode.child(Constants.MATCHING).value = false
+                                currentUserNode.child(Constants.CHAT_TYPE).value = ChatType.LOCATION.name
+                                currentUserNode.child(Constants.LOCATION).child(Constants.LAT).value = myLat
+                                currentUserNode.child(Constants.LOCATION).child(Constants.LNG).value = myLng
+                            }
+
+                            waitingList.filter { other ->
+                                val okCommon =
+                                    other.key != userId &&
+                                            other.child(Constants.STATUS).value == Constants.STATUS_WAITING &&
+                                            other.child(Constants.MATCHING).value != true &&
+                                            other.child(Constants.CHAT_TYPE).value?.toString() == ChatType.LOCATION.name
+
+                                if (!okCommon) return@filter false
+
+                                val oLat = other.child(Constants.LOCATION).child(Constants.LAT).getValue(Double::class.java)
+                                val oLng = other.child(Constants.LOCATION).child(Constants.LNG).getValue(Double::class.java)
+                                if (oLat == null || oLng == null || myLat == null || myLng == null) return@filter false
+
+                                val dist = haversineKm(myLat!!, myLng!!, oLat, oLng)
+                                dist <= Constants.MAX_MATCH_DISTANCE_KM
+                            }
+                        }
                     }
 
                     if (availableUsers.isNotEmpty()) {
@@ -57,13 +102,14 @@ class MatchRepositoryImpl(
                     } else {
                         val currentUser = mutableData.child(userId)
                         if (currentUser.value == null || currentUser.child(Constants.STATUS).value != Constants.STATUS_WAITING) {
-                            mutableData.child(userId).child(Constants.STATUS).value =
-                                Constants.STATUS_WAITING
-                            mutableData.child(userId).child(Constants.TIMESTAMP).value =
-                                System.currentTimeMillis()
-                            mutableData.child(userId).child(Constants.MATCHING).value = false
-                            mutableData.child(userId).child(Constants.CHAT_TYPE).value =
-                                chatType.name
+                            currentUser.child(Constants.STATUS).value = Constants.STATUS_WAITING
+                            currentUser.child(Constants.TIMESTAMP).value = System.currentTimeMillis()
+                            currentUser.child(Constants.MATCHING).value = false
+                            currentUser.child(Constants.CHAT_TYPE).value = chatType.name
+                            if (chatType == ChatType.LOCATION) {
+                                currentUser.child(Constants.LOCATION).child(Constants.LAT).value = myLat
+                                currentUser.child(Constants.LOCATION).child(Constants.LNG).value = myLng
+                            }
                         }
                         return Transaction.success(mutableData)
                     }
@@ -72,12 +118,7 @@ class MatchRepositoryImpl(
                 override fun onComplete(
                     error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?
                 ) {
-                    if (error != null) {
-                        cont.resume(MatchRepository.MatchResult.Error(R.string.network_error))
-                        return
-                    }
-
-                    if (!committed) {
+                    if (error != null || !committed) {
                         cont.resume(MatchRepository.MatchResult.Error(R.string.network_error))
                         return
                     }
@@ -87,17 +128,14 @@ class MatchRepositoryImpl(
                             userId,
                             otherUserId,
                             chatType,
-                            waitingRef,
                             chatRoomsRef,
-                        ) { result ->
-                            cont.resume(result)
-                        }
-                    } ?: run {
-                        cont.resume(MatchRepository.MatchResult.Waiting)
-                    }
+                            matchNotiRef
+                        ) { result -> cont.resume(result) }
+                    } ?: cont.resume(MatchRepository.MatchResult.Waiting)
                 }
             })
         }
+    }
 
     private fun createMatchAndCleanup(
         userId: String,
@@ -107,8 +145,7 @@ class MatchRepositoryImpl(
         matchNotificationsRef: DatabaseReference,
         callback: (MatchRepository.MatchResult) -> Unit
     ) {
-        val newRoomId = chatRoomsRef.push().key
-        if (newRoomId == null) {
+        val newRoomId = chatRoomsRef.push().key ?: run {
             callback(MatchRepository.MatchResult.Error(R.string.match_failed))
             return
         }
@@ -128,7 +165,6 @@ class MatchRepositoryImpl(
             Constants.TIMESTAMP to System.currentTimeMillis(),
             Constants.STATUS to Constants.STATUS_MATCHED
         )
-
         val matchDataForOther = mapOf(
             Constants.ROOM_ID to newRoomId,
             Constants.PARTNER_ID to userId,
@@ -152,14 +188,12 @@ class MatchRepositoryImpl(
         )
 
         database.updateChildren(updates)
-            .addOnSuccessListener {
-                callback(MatchRepository.MatchResult.Matched(newRoomId, otherUserId))
-            }
+            .addOnSuccessListener { callback(MatchRepository.MatchResult.Matched(newRoomId, otherUserId)) }
             .addOnFailureListener {
                 matchNotificationsRef.child(userId).removeValue()
                 matchNotificationsRef.child(otherUserId).removeValue()
 
-                val rollbackUpdates = hashMapOf<String, Any>(
+                val rollback = hashMapOf<String, Any>(
                     "${Constants.WAITING_USERS}/$userId/${Constants.STATUS}" to Constants.STATUS_WAITING,
                     "${Constants.WAITING_USERS}/$userId/${Constants.TIMESTAMP}" to System.currentTimeMillis(),
                     "${Constants.WAITING_USERS}/$userId/${Constants.MATCHING}" to false,
@@ -167,8 +201,7 @@ class MatchRepositoryImpl(
                     "${Constants.WAITING_USERS}/$otherUserId/${Constants.TIMESTAMP}" to System.currentTimeMillis(),
                     "${Constants.WAITING_USERS}/$otherUserId/${Constants.MATCHING}" to false
                 )
-                database.updateChildren(rollbackUpdates)
-
+                database.updateChildren(rollback)
                 callback(MatchRepository.MatchResult.Error(R.string.match_failed))
             }
     }

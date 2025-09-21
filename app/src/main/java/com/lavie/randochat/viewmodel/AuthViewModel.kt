@@ -10,13 +10,13 @@ import com.lavie.randochat.repository.UserRepository
 import com.lavie.randochat.service.PreferencesService
 import com.lavie.randochat.utils.Constants
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -146,7 +146,11 @@ class AuthViewModel(
         when (val saveResult = userRepository.saveUserToDb(user)) {
             is UserRepository.UserResult.Success -> {
                 _loginState.value = saveResult.user
-                cacheUser(saveResult.user)
+
+                if (!hasCachedUser()) {
+                    cacheUser(saveResult.user)
+                }
+
                 _progressMessageId.value = null
                 _errorMessageId.value = null
 
@@ -223,10 +227,22 @@ class AuthViewModel(
             prefs.putString(Constants.CACHED_USER_ID, user.id)
             prefs.putString(Constants.CACHED_USER_EMAIL, user.email)
             prefs.putString(Constants.CACHED_USER_NICKNAME, user.nickname)
+
+            prefs.putBoolean(Constants.CACHED_USER_IS_DISABLED, user.isDisabled)
+            prefs.putInt(Constants.CACHED_USER_CITIZEN_SCORE, user.citizenScore)
+            prefs.putInt(Constants.CACHED_USER_IMAGE_CREDIT, user.imageCredit)
+
+            val fcmTokensJson = JSONArray(user.fcmTokens).toString()
+            prefs.putString(Constants.CACHED_USER_FCM_TOKENS, fcmTokensJson)
         } else {
             prefs.remove(Constants.CACHED_USER_ID)
             prefs.remove(Constants.CACHED_USER_EMAIL)
             prefs.remove(Constants.CACHED_USER_NICKNAME)
+
+            prefs.remove(Constants.CACHED_USER_IS_DISABLED)
+            prefs.remove(Constants.CACHED_USER_CITIZEN_SCORE)
+            prefs.remove(Constants.CACHED_USER_IMAGE_CREDIT)
+            prefs.remove(Constants.CACHED_USER_FCM_TOKENS)
         }
     }
 
@@ -258,7 +274,28 @@ class AuthViewModel(
         val id = prefs.getString(Constants.CACHED_USER_ID, null) ?: return null
         val email = prefs.getString(Constants.CACHED_USER_EMAIL, "") ?: ""
         val nickname = prefs.getString(Constants.CACHED_USER_NICKNAME, "") ?: ""
-        return User(id = id, email = email, nickname = nickname, isOnline = false)
+        val isDisabled = prefs.getBoolean(Constants.CACHED_USER_IS_DISABLED, false)
+        val citizenScore = prefs.getInt(Constants.CACHED_USER_CITIZEN_SCORE, 0)
+        val imageCredit = prefs.getInt(Constants.CACHED_USER_IMAGE_CREDIT, 0)
+
+        val fcmTokensJson = prefs.getString(Constants.CACHED_USER_FCM_TOKENS, "[]") ?: "[]"
+        val fcmTokens = try {
+            val arr = JSONArray(fcmTokensJson)
+            List(arr.length()) { arr.getString(it) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        return User(
+            id = id,
+            email = email,
+            nickname = nickname,
+            isOnline = false,
+            isDisabled = isDisabled,
+            citizenScore = citizenScore,
+            imageCredit = imageCredit,
+            fcmTokens = fcmTokens
+        )
     }
 
     private fun cacheRoomId(roomId: String?) {
@@ -303,6 +340,13 @@ class AuthViewModel(
 
     suspend fun getCurrentImageCredit(userId: String): Int {
         return userRepository.getImageCredit(userId)
+    }
+
+    fun updateLocation(lat: Double, lng: Double) {
+        val userId = loginState.value?.id ?: return
+        viewModelScope.launch {
+            userRepository.updateUserLocation(userId, lat, lng)
+        }
     }
 
     sealed class NavigationEvent {
