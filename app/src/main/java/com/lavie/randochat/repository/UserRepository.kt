@@ -36,6 +36,8 @@ interface UserRepository {
 
     suspend fun decreaseImageCredit(userId: String, delta: Int): Result<Unit>
 
+    suspend fun updateUserLocation(userId: String, lat: Double, lng: Double)
+
     sealed class UserResult {
         data class Success(val user: User) : UserResult()
         data class Error(val messageId: Int?) : UserResult()

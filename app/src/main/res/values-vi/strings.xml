@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">Rando – Chat với người lạ</string>
     <string name="lets_start_chatting">Hãy bắt đầu trò chuyện!</string>
     <string name="start_a_chat">Bắt đầu chat</string>
@@ -126,5 +126,9 @@
     <string name="image_credit">Rando Coin (dùng để gửi ảnh): %1$s</string>
     <string name="not_enough_rando_coin">Bạn không đủ Rando Coin để gửi ảnh</string>
     <string name="cannot_send_image">Không thể gửi ảnh, vui lòng thử lại sau vài giây</string>
+    <string name="location_unavailable">Failed to get location</string>
+    <string name="location_permission_rationale">Cần quyền vị trí để ghép đôi theo khu vực.</string>
+    <string name="location_disabled">Vị trí đang tắt. Hãy bật GPS.</string>
+    <string name="cannot_get_location">Không lấy được vị trí. Thử lại.</string>
 
 </resources>

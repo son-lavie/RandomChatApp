@@ -2,9 +2,13 @@ package com.lavie.randochat.utils
 
 import android.content.Context
 import android.util.Base64
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.lavie.randochat.model.Emoji
 import com.lavie.randochat.ui.component.MessageComponent
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -15,6 +19,12 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.coroutines.resume
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 object CommonUtils {
     //NETWORK
@@ -195,6 +205,39 @@ object CommonUtils {
             }
         }
         return components
+    }
+
+    //LOCATION
+    fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2).pow(2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2).pow(2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
+    }
+
+    suspend fun getCurrentLocation(context: Context): Pair<Double, Double>? = suspendCancellableCoroutine { cont ->
+        val fused = LocationServices.getFusedLocationProviderClient(context)
+        try {
+            fused.lastLocation
+                .addOnSuccessListener { loc ->
+                    if (loc != null) cont.resume(loc.latitude to loc.longitude) else {
+                        val req = CurrentLocationRequest.Builder()
+                            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                            .setMaxUpdateAgeMillis(0).build()
+                        fused.getCurrentLocation(req, null)
+                            .addOnSuccessListener { loc2 ->
+                                if (loc2 != null) cont.resume(loc2.latitude to loc2.longitude)
+                                else cont.resume(null)
+                            }
+                            .addOnFailureListener { cont.resume(null) }
+                    }
+                }
+                .addOnFailureListener { cont.resume(null) }
+        } catch (_: Exception) { cont.resume(null) }
     }
 }
 

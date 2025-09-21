@@ -339,4 +339,13 @@ class UserRepositoryImpl(
         }
     }
 
+    override suspend fun updateUserLocation(userId: String, lat: Double, lng: Double) {
+        val updates = mapOf(
+            "${Constants.USERS}/$userId/${Constants.LOCATION}/${Constants.LAT}" to lat,
+            "${Constants.USERS}/$userId/${Constants.LOCATION}/${Constants.LNG}" to lng
+        )
+
+        database.updateChildren(updates).await()
+    }
+
 }

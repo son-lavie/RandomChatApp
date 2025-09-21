@@ -73,48 +73,14 @@ private fun LoginCheckSplash(
     navController: NavController,
     defaultMessage: String
 ) {
-    val loginState by authViewModel.loginState.collectAsState()
-    val errorMessageId by authViewModel.errorMessageId.collectAsState()
-    val progressMessageId by authViewModel.progressMessageId.collectAsState()
-
-    val currentMessage = when {
-        progressMessageId != null -> stringResource(progressMessageId!!)
-        loginState != null -> stringResource(R.string.splash_connecting)
-        errorMessageId != null -> stringResource(errorMessageId!!)
-        authViewModel.hasCachedUser() -> stringResource(R.string.splash_connecting)
-        else -> defaultMessage
-    }
-
     LaunchedEffect(Unit) {
-        if (loginState == null && authViewModel.hasCachedUser()) {
-            val restored = authViewModel.restoreCachedUser()
-            if (restored) return@LaunchedEffect
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(Constants.CHECK_USER_TIMEOUT)
-        val noLogin = authViewModel.loginState.value == null
-        val noCache = !authViewModel.hasCachedUser()
-
-        if (noLogin && noCache) {
-            navController.navigate(Constants.WELCOME_SCREEN) {
-                popUpTo(Constants.SPLASH_SCREEN) { inclusive = true }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        Timber.d("Entered LaunchedEffect for navigationEvent")
         authViewModel.navigationEvent.collect { event ->
-            Timber.d("navigationEvent received: $event")
             when (event) {
                 is AuthViewModel.NavigationEvent.NavigateToChat -> {
                     navController.navigate("${Constants.CHAT_SCREEN}/${event.roomId}") {
                         popUpTo(Constants.SPLASH_SCREEN) { inclusive = true }
                     }
                 }
-
                 is AuthViewModel.NavigationEvent.NavigateToStartChat -> {
                     navController.navigate(Constants.START_CHAT_SCREEN) {
                         popUpTo(Constants.SPLASH_SCREEN) { inclusive = true }
@@ -124,7 +90,16 @@ private fun LoginCheckSplash(
         }
     }
 
-    SplashContent(message = currentMessage)
+    val loginState by authViewModel.loginState.collectAsState()
+    LaunchedEffect(loginState) {
+        if (loginState == null && !authViewModel.hasCachedUser()) {
+            navController.navigate(Constants.WELCOME_SCREEN) {
+                popUpTo(Constants.SPLASH_SCREEN) { inclusive = true }
+            }
+        }
+    }
+
+    SplashContent(message = defaultMessage)
 }
 
 @Composable
